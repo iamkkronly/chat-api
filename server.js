@@ -1,6 +1,3 @@
-// Load environment variables
-require('dotenv').config();
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -9,21 +6,18 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Gemini API Key (set this in Render's Environment Variables)
+// Gemini API Key from environment variable (set in Render dashboard)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Test Route
 app.get('/', (req, res) => {
   res.send('🤖 Gemini Chat API is online! Made by Kaustav Ray. POST to /chat to talk.');
 });
 
-// Main Chat Route
 app.post('/chat', async (req, res) => {
   const { message, messages } = req.body;
 
@@ -32,7 +26,6 @@ app.post('/chat', async (req, res) => {
   }
 
   try {
-    // Personality system message
     const contents = [
       {
         role: 'user',
@@ -60,7 +53,6 @@ app.post('/chat', async (req, res) => {
       });
     }
 
-    // Send to Gemini
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -82,13 +74,11 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// Fallback Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ Unhandled error:', err.stack);
   res.status(500).json({ error: 'Internal server error.' });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`✅ Gemini Chat API is running at http://localhost:${PORT}`);
 });
