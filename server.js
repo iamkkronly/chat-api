@@ -6,14 +6,14 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Split GEMINI_API_KEY string into multiple keys
+// Multiple comma-separated API keys (Render environment)
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
-  .map(key => key.trim())
+  .map(k => k.trim())
   .filter(Boolean);
 
 if (GEMINI_KEYS.length === 0) {
-  console.error('❌ No Gemini API keys found in GEMINI_API_KEY');
+  console.error('❌ No Gemini API keys found. Add GEMINI_API_KEY in your environment.');
   process.exit(1);
 }
 
@@ -24,7 +24,7 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! Made by Kaustav Ray. POST to /chat to talk.');
+  res.send('🤖 Gemini Chat API is online! POST to /chat to talk. Powered by Kaustav Ray.');
 });
 
 app.post('/chat', async (req, res) => {
@@ -49,7 +49,6 @@ app.post('/chat', async (req, res) => {
     const validMessages = messages.filter(m =>
       m.role && m.content && ['user', 'bot'].includes(m.role)
     );
-
     contents.push(...validMessages.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
@@ -61,10 +60,9 @@ app.post('/chat', async (req, res) => {
     });
   }
 
-  // Try each key until success
-  for (const apiKey of GEMINI_KEYS) {
+  for (const key of GEMINI_KEYS) {
     try {
-      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      const response = await fetch(`${GEMINI_URL}?key=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents })
@@ -73,22 +71,18 @@ app.post('/chat', async (req, res) => {
       const data = await response.json();
 
       if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const reply = data.candidates[0].content.parts[0].text;
-        return res.json({ reply });
+        return res.json({
+          reply: data.candidates[0].content.parts[0].text
+        });
       } else {
-        console.warn(`⚠️ Failed with key ending in ${apiKey.slice(-5)}:`, data.error?.message);
+        console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
       }
     } catch (err) {
-      console.warn(`⚠️ Error with key ending in ${apiKey.slice(-5)}:`, err.message);
+      console.warn(`⚠️ Error with key ending in ${key.slice(-5)}: ${err.message}`);
     }
   }
 
   res.status(500).json({ error: 'All Gemini API keys failed. Please try again later.' });
-});
-
-app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err.stack);
-  res.status(500).json({ error: 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
