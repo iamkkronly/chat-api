@@ -72,5 +72,5 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Gemini Chat API server running on http://localhost:${PORT}`);
+  console.log(`✅ Chat API server running on http://localhost:${PORT}`);
 });
