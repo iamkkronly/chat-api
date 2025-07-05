@@ -36,18 +36,17 @@ app.post('/chat', async (req, res) => {
       }
     ];
 
-    // Limit to last 5 messages (user + bot)
+    // Add up to 5 previous messages
     const recentMessages = messages
       .filter(m => m.role && m.content && ['user', 'bot'].includes(m.role))
       .slice(-5);
 
-    // Convert to Gemini format
     contents.push(...recentMessages.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
     })));
 
-    // Add the new message
+    // Add current message
     if (message) {
       contents.push({
         role: 'user',
@@ -62,14 +61,22 @@ app.post('/chat', async (req, res) => {
     });
 
     const data = await response.json();
+    console.log('🔁 Gemini API Response:', JSON.stringify(data, null, 2));
 
     if (!response.ok) {
       return res.status(500).json({ error: data.error?.message || 'Gemini API error' });
     }
 
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '⚠️ No reply from Gemini.';
+    // SAFELY extract the reply
+    let reply = '⚠️ No reply from Gemini.';
+    try {
+      if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        reply = data.candidates[0].content.parts[0].text;
+      }
+    } catch (e) {
+      console.error('⚠️ Failed to extract reply:', e.message);
+    }
 
-    // Return both formats for frontend flexibility
     res.json({ reply, response: reply });
 
   } catch (err) {
