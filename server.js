@@ -14,7 +14,7 @@ app.use(bodyParser.json());
 
 // Home route (optional)
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! I am Kaustav Ray, made by Kaustav Ray.');
+  res.send('🤖 Chat API is online! I am Kaustav Ray, made by Kaustav Ray.');
 });
 
 // Chat endpoint
@@ -34,7 +34,7 @@ app.post('/chat', async (req, res) => {
           {
             parts: [
               {
-                text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always speak respectfully, stay in character, and mention your identity when appropriate."
+                text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always speak respectfully."
               },
               {
                 text: userMessage
