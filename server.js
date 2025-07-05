@@ -6,7 +6,17 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Split GEMINI_API_KEY by commas to support multiple keys
+const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
+  .split(',')
+  .map(key => key.trim())
+  .filter(key => key.length > 0);
+
+if (GEMINI_KEYS.length === 0) {
+  console.error("❌ No GEMINI_API_KEYs provided in environment!");
+  process.exit(1);
+}
+
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 app.use(cors());
@@ -18,71 +28,62 @@ app.get('/', (req, res) => {
 });
 
 app.post('/chat', async (req, res) => {
-  const { message, messages = [] } = req.body;
+  const { message, messages } = req.body;
 
-  if (!message && messages.length === 0) {
+  if (!message && (!Array.isArray(messages) || messages.length === 0)) {
     return res.status(400).json({ error: 'Please send a message or messages array.' });
   }
 
-  try {
-    const contents = [
-      {
-        role: 'user',
-        parts: [
-          {
-            text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
-          }
-        ]
-      }
-    ];
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        {
+          text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
+        }
+      ]
+    }
+  ];
 
-    // Add up to 5 previous messages
-    const recentMessages = messages
-      .filter(m => m.role && m.content && ['user', 'bot'].includes(m.role))
-      .slice(-5);
+  if (Array.isArray(messages)) {
+    const validMessages = messages.filter(m =>
+      m.role && m.content && ['user', 'bot'].includes(m.role)
+    );
 
-    contents.push(...recentMessages.map(m => ({
+    contents.push(...validMessages.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
     })));
-
-    // Add current message
-    if (message) {
-      contents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
-    }
-
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents })
+  } else if (message) {
+    contents.push({
+      role: 'user',
+      parts: [{ text: message }]
     });
-
-    const data = await response.json();
-    console.log('🔁 Gemini API Response:', JSON.stringify(data, null, 2));
-
-    if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'Gemini API error' });
-    }
-
-    // SAFELY extract the reply
-    let reply = '⚠️ No reply from Gemini.';
-    try {
-      if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        reply = data.candidates[0].content.parts[0].text;
-      }
-    } catch (e) {
-      console.error('⚠️ Failed to extract reply:', e.message);
-    }
-
-    res.json({ reply, response: reply });
-
-  } catch (err) {
-    console.error('❌ Server error:', err.message);
-    res.status(500).json({ error: 'Server error: ' + err.message });
   }
+
+  for (const key of GEMINI_KEYS) {
+    try {
+      const response = await fetch(`${GEMINI_URL}?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const reply = data.candidates[0].content.parts[0].text;
+        return res.json({ reply });
+      } else {
+        console.warn(`⚠️ Key failed (${key.slice(-5)}): ${data.error?.message || 'Unknown error'}`);
+      }
+
+    } catch (err) {
+      console.warn(`⚠️ Request error with key (${key.slice(-5)}):`, err.message);
+    }
+  }
+
+  res.status(500).json({ error: 'All GEMINI_API_KEYs failed. Please try again later.' });
 });
 
 app.use((err, req, res, next) => {
