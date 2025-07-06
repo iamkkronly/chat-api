@@ -6,7 +6,7 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Multiple comma-separated API keys from environment variable
+// Multiple Gemini API keys separated by commas
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
@@ -30,10 +30,12 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
   const { message, messages } = req.body;
 
+  // Validate input
   if (!message && (!Array.isArray(messages) || messages.length === 0)) {
-    return res.status(400).json({ error: 'Please send a message or messages array.' });
+    return res.status(400).json({ error: 'Please send a "message" or "messages" array.' });
   }
 
+  // Start with personality prompt
   const contents = [
     {
       role: 'user',
@@ -45,13 +47,14 @@ app.post('/chat', async (req, res) => {
     }
   ];
 
+  // Add messages history if provided
   if (Array.isArray(messages)) {
     const validMessages = messages
       .filter(m => m.role && m.content && ['user', 'bot', 'model'].includes(m.role))
       .slice(-10); // Keep last 10 messages (5 exchanges)
-      
+
     contents.push(...validMessages.map(m => ({
-      role: m.role === 'bot' ? 'model' : m.role,
+      role: m.role === 'bot' ? 'model' : m.role, // convert 'bot' → 'model'
       parts: [{ text: m.content }]
     })));
   } else if (message) {
@@ -61,6 +64,7 @@ app.post('/chat', async (req, res) => {
     });
   }
 
+  // Try each API key until one works
   for (const key of GEMINI_KEYS) {
     try {
       const response = await fetch(`${GEMINI_URL}?key=${key}`, {
@@ -83,7 +87,7 @@ app.post('/chat', async (req, res) => {
         const text = data.candidates[0].content.parts[0].text;
         return res.json({
           reply: text,
-          response: text // For frontend compatibility
+          response: text // for frontend compatibility
         });
       } else {
         console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
@@ -93,6 +97,7 @@ app.post('/chat', async (req, res) => {
     }
   }
 
+  // If all keys failed
   res.status(500).json({ error: 'All Gemini API keys failed. Please try again later.' });
 });
 
