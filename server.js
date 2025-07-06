@@ -94,7 +94,7 @@ app.post('/chat', async (req, res) => {
             temperature: 0.9,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 512
+            maxOutputTokens: 5120
           }
         })
       });
