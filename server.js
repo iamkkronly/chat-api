@@ -29,20 +29,29 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
   const { message, messages, customPrompt, contents: customContents } = req.body;
 
+  const defaultPrompt = `
+Your name is Kaustav Ray.
+You are a smart, friendly, and creative AI assistant built by Kaustav Ray.
+Always answer differently each time — use varied words, tone, and style.
+You can be slightly funny, poetic, deep, or curious — but always helpful and respectful.
+If asked the same thing again, reply in a new unique way.
+Avoid repeating the same sentence structure.
+Make each reply feel fresh and personalized.
+`;
+
   let contents = [];
 
-  // Allow full custom contents
+  // Advanced mode: allow full custom Gemini content array
   if (Array.isArray(customContents) && customContents.length > 0) {
     contents = customContents;
   } else {
     // Add system prompt
     contents.push({
       role: 'user',
-      parts: [{
-        text: customPrompt || "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
-      }]
+      parts: [{ text: customPrompt || defaultPrompt }]
     });
 
+    // Add message history if present
     if (Array.isArray(messages)) {
       const validMessages = messages.filter(m =>
         m.role && m.content && ['user', 'bot'].includes(m.role)
@@ -60,11 +69,10 @@ app.post('/chat', async (req, res) => {
     }
   }
 
-  // Add randomness settings
   const generationConfig = {
-    temperature: 1.5,   // More creativity/randomness (range: 0 - 2)
-    topK: 50,           // Choose randomly from top 50
-    topP: 0.95,         // Nucleus sampling
+    temperature: 1.2,
+    topK: 50,
+    topP: 0.95,
     candidateCount: 1
   };
 
@@ -84,17 +92,20 @@ app.post('/chat', async (req, res) => {
         return res.json({
           success: true,
           reply: text.trim(),
-          data // full response
+          data
         });
       } else {
-        console.warn(`⚠️ Key ${key.slice(-5)} failed: ${data?.error?.message}`);
+        console.warn(`⚠️ Key ${key.slice(-5)} failed: ${data?.error?.message || 'Unknown error'}`);
       }
     } catch (err) {
       console.warn(`⚠️ Error with key ${key.slice(-5)}: ${err.message}`);
     }
   }
 
-  res.status(500).json({ success: false, error: 'All Gemini API keys failed. Please try again.' });
+  res.status(500).json({
+    success: false,
+    error: 'All Gemini API keys failed. Please try again later.'
+  });
 });
 
 app.listen(PORT, () => {
