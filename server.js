@@ -6,7 +6,7 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Gemini API keys from environment variable, comma-separated
+// Load Gemini API keys from environment
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
@@ -24,93 +24,84 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! POST to /chat with "message", "messages" or "history". Powered by Kaustav Ray.');
+  res.send('🤖 Gemini Chat API is online! POST to /chat to talk. Powered by Kaustav Ray.');
 });
 
 app.post('/chat', async (req, res) => {
-  const { prompt, message, messages, history, system_prompt } = req.body;
+  const { message, messages } = req.body;
 
-  // Validate input presence
-  if (
-    !prompt &&
-    !message &&
-    (!Array.isArray(messages) || messages.length === 0) &&
-    (!Array.isArray(history) || history.length === 0)
-  ) {
-    return res.status(400).json({ error: 'Please send "prompt", "message", "messages" or "history".' });
+  if (!message && (!Array.isArray(messages) || messages.length === 0)) {
+    return res.status(400).json({ error: 'Please send a message or messages array.' });
   }
 
-  // Combine messages and history into one array for processing
-  const chatHistory = Array.isArray(messages)
-    ? messages
-    : Array.isArray(history)
-    ? history
-    : [];
-
-  // Start with a system prompt or default personality
   const contents = [
     {
       role: 'user',
-      parts: [
-        {
-          text:
-            system_prompt ||
-            "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
-        }
-      ]
+      parts: [{
+        text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
+      }]
     }
   ];
 
-  // Add chat history if any
-  if (chatHistory.length > 0) {
-    const validMessages = chatHistory
-      .filter(m => m.role && m.content)
-      .slice(-10); // limit to last 10 messages (5 exchanges)
-
-    contents.push(
-      ...validMessages.map(m => ({
-        role: m.role === 'bot' || m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }))
+  if (Array.isArray(messages)) {
+    const validMessages = messages.filter(m =>
+      m.role && m.content && ['user', 'bot'].includes(m.role)
     );
-  }
-  // Else if just prompt or message string, add as single user message
-  else if (prompt || message) {
+
+    contents.push(...validMessages.map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }]
+    })));
+  } else if (message) {
     contents.push({
       role: 'user',
-      parts: [{ text: prompt || message }]
+      parts: [{ text: message }]
     });
   }
 
-  // Try all Gemini API keys until success
   for (const key of GEMINI_KEYS) {
     try {
       const response = await fetch(`${GEMINI_URL}?key=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.9,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 5120
-          }
-        })
+        body: JSON.stringify({ contents })
       });
 
       const data = await response.json();
 
-      if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        const text = data.candidates[0].content.parts[0].text;
-        return res.json({
-          reply: text,
-          response: text,
-          raw: data
-        });
-      } else {
-        console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
+      // Try multiple paths for a valid reply
+      let replyText = null;
+
+      // Preferred structured Gemini response
+      if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        replyText = data.candidates[0].content.parts[0].text;
       }
+
+      // Fallback to other common structures
+      else if (data?.candidates?.[0]?.content?.text) {
+        replyText = data.candidates[0].content.text;
+      }
+      else if (data?.output) {
+        replyText = data.output;
+      }
+      else if (data?.response) {
+        replyText = data.response;
+      }
+      else if (data?.choices?.[0]?.message?.content) {
+        replyText = data.choices[0].message.content;
+      }
+
+      // Final fallback — return the full data if something is there
+      if (!replyText && typeof data === 'object') {
+        replyText = JSON.stringify(data, null, 2);
+      }
+
+      if (replyText) {
+        return res.json({ reply: replyText });
+      } else {
+        console.warn(`⚠️ Key ending in ${key.slice(-5)} returned empty or unrecognized structure.`);
+      }
+
     } catch (err) {
       console.warn(`⚠️ Error with key ending in ${key.slice(-5)}: ${err.message}`);
     }
@@ -120,5 +111,5 @@ app.post('/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Gemini Chat API running at http://localhost:${PORT}`);
+  console.log(`✅ Gemini Chat API is running at http://localhost:${PORT}`);
 });
