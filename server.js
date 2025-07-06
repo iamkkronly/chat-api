@@ -70,11 +70,13 @@ app.post('/chat', async (req, res) => {
 
       const data = await response.json();
 
-      if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        return res.json({
-          reply: data.candidates[0].content.parts[0].text
-        });
-      } else {
+ if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+  const text = data.candidates[0].content.parts[0].text;
+  return res.json({
+    reply: text,
+    response: text // for frontend compatibility
+  });
+} else {
         console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
       }
     } catch (err) {
