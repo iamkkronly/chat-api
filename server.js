@@ -31,9 +31,11 @@ app.post('/chat', async (req, res) => {
 
   let contents = [];
 
+  // Allow full custom contents
   if (Array.isArray(customContents) && customContents.length > 0) {
     contents = customContents;
   } else {
+    // Add system prompt
     contents.push({
       role: 'user',
       parts: [{
@@ -58,13 +60,12 @@ app.post('/chat', async (req, res) => {
     }
   }
 
-  // Gemini generation config for randomness
+  // Add randomness settings
   const generationConfig = {
-    temperature: 0.9,       // higher = more random
-    topK: 40,               // higher = more varied
-    topP: 0.95,             // nucleus sampling
-    candidateCount: 1       // single response
-    // omit `randomSeed` to ensure random output every time
+    temperature: 1.5,   // More creativity/randomness (range: 0 - 2)
+    topK: 50,           // Choose randomly from top 50
+    topP: 0.95,         // Nucleus sampling
+    candidateCount: 1
   };
 
   for (const key of GEMINI_KEYS) {
@@ -77,17 +78,23 @@ app.post('/chat', async (req, res) => {
 
       const data = await response.json();
 
-      if (response.ok && data) {
-        return res.json({ success: true, data }); // full raw response
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (response.ok && text) {
+        return res.json({
+          success: true,
+          reply: text.trim(),
+          data // full response
+        });
       } else {
-        console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data?.error?.message || 'Unknown error'}`);
+        console.warn(`⚠️ Key ${key.slice(-5)} failed: ${data?.error?.message}`);
       }
     } catch (err) {
-      console.warn(`⚠️ Error with key ending in ${key.slice(-5)}: ${err.message}`);
+      console.warn(`⚠️ Error with key ${key.slice(-5)}: ${err.message}`);
     }
   }
 
-  res.status(500).json({ success: false, error: 'All Gemini API keys failed. Please try again later.' });
+  res.status(500).json({ success: false, error: 'All Gemini API keys failed. Please try again.' });
 });
 
 app.listen(PORT, () => {
