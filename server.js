@@ -1,12 +1,12 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const fetch = require('node-fetch');
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import fetch from 'node-fetch';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Load Gemini API keys from environment
+// Load Gemini API keys from environment variable
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
@@ -17,61 +17,51 @@ if (GEMINI_KEYS.length === 0) {
   process.exit(1);
 }
 
-// Correct Gemini API endpoint (no space before :generateContent)
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash :generateContent';
+// ✅ Gemini 2.0 Flash endpoint (NO space before `:generateContent`)
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true }));
 
+// Health check
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! POST to /chat to talk.');
+  res.send('✅ Gemini 2.0 Flash API is running. Use POST /chat to interact.');
 });
 
+// Main chat endpoint
 app.post('/chat', async (req, res) => {
-  const { message, messages, customPrompt } = req.body;
+  const {
+    message,
+    messages = [],
+    customPrompt = '',
+    temperature = 0.8,
+    topK = 40,
+    topP = 0.9
+  } = req.body;
+
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ success: false, error: 'message is required and must be a string' });
+  }
 
   const defaultPrompt = `
 Your name is Kaustav Ray.
-You are a smart, friendly, and creative AI assistant built by Kaustav Ray.
-Always answer differently each time — use varied words, tone, and style.
-You can be slightly funny, poetic, deep, or curious — but always helpful and respectful.
-If asked the same thing again, reply in a new unique way.
-Avoid repeating the same sentence structure.
-Make each reply feel fresh and personalized.
+You are a helpful, intelligent, and creative AI assistant made by Kaustav Ray.
+Always give different responses, with variety in tone, language, and format.
+Never repeat the same reply twice. Avoid generic or repetitive wording.
 `;
 
-  let contents = [];
-
-  // Add system prompt as a separate instruction
-  contents.push({
-    role: 'system',
-    parts: [{ text: customPrompt || defaultPrompt }]
-  });
-
-  // Add message history if provided
-  if (Array.isArray(messages)) {
-    const validMessages = messages.filter(
-      m => m.role && m.content && ['user', 'assistant'].includes(m.role)
-    );
-
-    contents.push(
-      ...validMessages.map(m => ({
-        role: m.role,
-        parts: [{ text: m.content }]
-      }))
-    );
-  } else if (message) {
-    contents.push({
-      role: 'user',
-      parts: [{ text: message }]
-    });
-  }
+  const contents = [
+    { role: 'system', parts: [{ text: customPrompt || defaultPrompt }] },
+    ...messages
+      .filter(m => m.role && m.content && ['user', 'assistant'].includes(m.role))
+      .map(m => ({ role: m.role, parts: [{ text: m.content }] })),
+    { role: 'user', parts: [{ text: message }] }
+  ];
 
   const generationConfig = {
-    temperature: Math.min(1.0, Math.max(0.0, req.body.temperature || 0.8)),
-    topK: Math.min(80, Math.max(1, req.body.topK || 50)),
-    topP: Math.min(1.0, Math.max(0.0, req.body.topP || 0.95)),
+    temperature: Math.max(0, Math.min(1, temperature)),
+    topK: Math.max(1, Math.min(80, topK)),
+    topP: Math.max(0, Math.min(1, topP)),
     candidateCount: 1
   };
 
@@ -88,10 +78,8 @@ Make each reply feel fresh and personalized.
       const data = await response.json();
 
       if (!response.ok) {
-        console.error(
-          `⚠️ Gemini API Error (Key: ${key.slice(-5)}): ${data.error?.message}`
-        );
-        lastError = data.error?.message || 'API request failed';
+        console.warn(`⚠️ Gemini API (${key.slice(-5)}): ${data.error?.message}`);
+        lastError = data.error?.message;
         continue;
       }
 
@@ -100,24 +88,23 @@ Make each reply feel fresh and personalized.
       if (reply) {
         return res.json({
           success: true,
-          reply: reply.trim(),
-          data
+          reply: reply.trim()
         });
-      } else {
-        lastError = 'No response from Gemini API';
       }
+
+      lastError = 'No valid response from Gemini API';
     } catch (err) {
-      console.error(`⚠️ Network error: ${err.message}`);
+      console.error(`❌ Network error: ${err.message}`);
       lastError = err.message;
     }
   }
 
   res.status(500).json({
     success: false,
-    error: lastError || 'All API keys failed. Try again later.'
+    error: lastError || 'All API keys failed'
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Gemini 2.0 Flash API is running on port ${PORT}`);
 });
