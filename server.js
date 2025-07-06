@@ -6,13 +6,14 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Gemini API keys from environment variable, comma-separated
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
   .filter(Boolean);
 
 if (GEMINI_KEYS.length === 0) {
-  console.error('❌ No Gemini API keys found.');
+  console.error('❌ No Gemini API keys found. Add GEMINI_API_KEY in your environment.');
   process.exit(1);
 }
 
@@ -23,49 +24,65 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.send('✅ Universal Gemini API is online. POST to /chat with "prompt" or "messages". Made by Kaustav Ray.');
+  res.send('🤖 Gemini Chat API is online! POST to /chat with "message", "messages" or "history". Powered by Kaustav Ray.');
 });
 
 app.post('/chat', async (req, res) => {
-  const { prompt, message, messages, system_prompt } = req.body;
+  const { prompt, message, messages, history, system_prompt } = req.body;
 
-  if (!prompt && !message && (!Array.isArray(messages) || messages.length === 0)) {
-    return res.status(400).json({ error: 'Send "prompt", "message", or "messages" array.' });
+  // Validate input presence
+  if (
+    !prompt &&
+    !message &&
+    (!Array.isArray(messages) || messages.length === 0) &&
+    (!Array.isArray(history) || history.length === 0)
+  ) {
+    return res.status(400).json({ error: 'Please send "prompt", "message", "messages" or "history".' });
   }
 
-  const contents = [];
+  // Combine messages and history into one array for processing
+  const chatHistory = Array.isArray(messages)
+    ? messages
+    : Array.isArray(history)
+    ? history
+    : [];
 
-  // Add optional system prompt
-  contents.push({
-    role: 'user',
-    parts: [
-      {
-        text: system_prompt || "You are a helpful AI created by Kaustav Ray. Respond intelligently and politely."
-      }
-    ]
-  });
+  // Start with a system prompt or default personality
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        {
+          text:
+            system_prompt ||
+            "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
+        }
+      ]
+    }
+  ];
 
-  // If using chat history
-  if (Array.isArray(messages)) {
-    const validMessages = messages
+  // Add chat history if any
+  if (chatHistory.length > 0) {
+    const validMessages = chatHistory
       .filter(m => m.role && m.content)
-      .slice(-10);
+      .slice(-10); // limit to last 10 messages (5 exchanges)
 
-    contents.push(...validMessages.map(m => ({
-      role: m.role === 'bot' || m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    })));
+    contents.push(
+      ...validMessages.map(m => ({
+        role: m.role === 'bot' || m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }))
+    );
   }
-
-  // If simple message
-  else if (message || prompt) {
+  // Else if just prompt or message string, add as single user message
+  else if (prompt || message) {
     contents.push({
       role: 'user',
-      parts: [{ text: message || prompt }]
+      parts: [{ text: prompt || message }]
     });
   }
 
-  // Try all API keys
+  // Try all Gemini API keys until success
   for (const key of GEMINI_KEYS) {
     try {
       const response = await fetch(`${GEMINI_URL}?key=${key}`, {
@@ -99,9 +116,9 @@ app.post('/chat', async (req, res) => {
     }
   }
 
-  res.status(500).json({ error: 'All Gemini API keys failed.' });
+  res.status(500).json({ error: 'All Gemini API keys failed. Please try again later.' });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Universal AI Server is live at http://localhost:${PORT}`);
+  console.log(`✅ Gemini Chat API running at http://localhost:${PORT}`);
 });
