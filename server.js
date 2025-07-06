@@ -6,7 +6,7 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Multiple comma-separated API keys (Render environment)
+// Multiple comma-separated API keys from environment variable
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
@@ -46,11 +46,12 @@ app.post('/chat', async (req, res) => {
   ];
 
   if (Array.isArray(messages)) {
-    const validMessages = messages.filter(m =>
-      m.role && m.content && ['user', 'bot'].includes(m.role)
-    );
+    const validMessages = messages
+      .filter(m => m.role && m.content && ['user', 'bot', 'model'].includes(m.role))
+      .slice(-10); // Keep last 10 messages (5 exchanges)
+      
     contents.push(...validMessages.map(m => ({
-      role: m.role === 'user' ? 'user' : 'model',
+      role: m.role === 'bot' ? 'model' : m.role,
       parts: [{ text: m.content }]
     })));
   } else if (message) {
@@ -65,18 +66,26 @@ app.post('/chat', async (req, res) => {
       const response = await fetch(`${GEMINI_URL}?key=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents })
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            temperature: 0.9,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 256
+          }
+        })
       });
 
       const data = await response.json();
 
- if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-  const text = data.candidates[0].content.parts[0].text;
-  return res.json({
-    reply: text,
-    response: text // for frontend compatibility
-  });
-} else {
+      if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const text = data.candidates[0].content.parts[0].text;
+        return res.json({
+          reply: text,
+          response: text // For frontend compatibility
+        });
+      } else {
         console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
       }
     } catch (err) {
