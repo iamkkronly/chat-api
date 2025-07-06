@@ -6,14 +6,13 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Multiple Gemini API keys separated by commas
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
   .filter(Boolean);
 
 if (GEMINI_KEYS.length === 0) {
-  console.error('❌ No Gemini API keys found. Add GEMINI_API_KEY in your environment.');
+  console.error('❌ No Gemini API keys found.');
   process.exit(1);
 }
 
@@ -24,47 +23,49 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! POST to /chat to talk. Powered by Kaustav Ray.');
+  res.send('✅ Universal Gemini API is online. POST to /chat with "prompt" or "messages". Made by Kaustav Ray.');
 });
 
 app.post('/chat', async (req, res) => {
-  const { message, messages } = req.body;
+  const { prompt, message, messages, system_prompt } = req.body;
 
-  // Validate input
-  if (!message && (!Array.isArray(messages) || messages.length === 0)) {
-    return res.status(400).json({ error: 'Please send a "message" or "messages" array.' });
+  if (!prompt && !message && (!Array.isArray(messages) || messages.length === 0)) {
+    return res.status(400).json({ error: 'Send "prompt", "message", or "messages" array.' });
   }
 
-  // Start with personality prompt
-  const contents = [
-    {
-      role: 'user',
-      parts: [
-        {
-          text: "Your name is Kaustav Ray. You are a helpful and intelligent assistant created by Kaustav Ray. Always respond respectfully, briefly, and accurately."
-        }
-      ]
-    }
-  ];
+  const contents = [];
 
-  // Add messages history if provided
+  // Add optional system prompt
+  contents.push({
+    role: 'user',
+    parts: [
+      {
+        text: system_prompt || "You are a helpful AI created by Kaustav Ray. Respond intelligently and politely."
+      }
+    ]
+  });
+
+  // If using chat history
   if (Array.isArray(messages)) {
     const validMessages = messages
-      .filter(m => m.role && m.content && ['user', 'bot', 'model'].includes(m.role))
-      .slice(-10); // Keep last 10 messages (5 exchanges)
+      .filter(m => m.role && m.content)
+      .slice(-10);
 
     contents.push(...validMessages.map(m => ({
-      role: m.role === 'bot' ? 'model' : m.role, // convert 'bot' → 'model'
+      role: m.role === 'bot' || m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }]
     })));
-  } else if (message) {
+  }
+
+  // If simple message
+  else if (message || prompt) {
     contents.push({
       role: 'user',
-      parts: [{ text: message }]
+      parts: [{ text: message || prompt }]
     });
   }
 
-  // Try each API key until one works
+  // Try all API keys
   for (const key of GEMINI_KEYS) {
     try {
       const response = await fetch(`${GEMINI_URL}?key=${key}`, {
@@ -76,7 +77,7 @@ app.post('/chat', async (req, res) => {
             temperature: 0.9,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 256
+            maxOutputTokens: 512
           }
         })
       });
@@ -87,7 +88,8 @@ app.post('/chat', async (req, res) => {
         const text = data.candidates[0].content.parts[0].text;
         return res.json({
           reply: text,
-          response: text // for frontend compatibility
+          response: text,
+          raw: data
         });
       } else {
         console.warn(`⚠️ Failed with key ending in ${key.slice(-5)}: ${data.error?.message}`);
@@ -97,10 +99,9 @@ app.post('/chat', async (req, res) => {
     }
   }
 
-  // If all keys failed
-  res.status(500).json({ error: 'All Gemini API keys failed. Please try again later.' });
+  res.status(500).json({ error: 'All Gemini API keys failed.' });
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Gemini Chat API is running at http://localhost:${PORT}`);
+  console.log(`🚀 Universal AI Server is live at http://localhost:${PORT}`);
 });
