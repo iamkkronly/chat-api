@@ -6,28 +6,30 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Load Gemini API keys from environment
 const GEMINI_KEYS = (process.env.GEMINI_API_KEY || '')
   .split(',')
   .map(k => k.trim())
   .filter(Boolean);
 
 if (GEMINI_KEYS.length === 0) {
-  console.error('❌ No Gemini API keys found. Add GEMINI_API_KEY in your environment.');
+  console.error('❌ No Gemini API keys found. Set GEMINI_API_KEY in environment variables.');
   process.exit(1);
 }
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Correct Gemini API endpoint (no space before :generateContent)
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash :generateContent';
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.send('🤖 Gemini Chat API is online! POST to /chat to talk. Powered by Kaustav Ray.');
+  res.send('🤖 Gemini Chat API is online! POST to /chat to talk.');
 });
 
 app.post('/chat', async (req, res) => {
-  const { message, messages, customPrompt, contents: customContents } = req.body;
+  const { message, messages, customPrompt } = req.body;
 
   const defaultPrompt = `
 Your name is Kaustav Ray.
@@ -41,40 +43,39 @@ Make each reply feel fresh and personalized.
 
   let contents = [];
 
-  // Advanced mode: allow full custom Gemini content array
-  if (Array.isArray(customContents) && customContents.length > 0) {
-    contents = customContents;
-  } else {
-    // Add system prompt
+  // Add system prompt as a separate instruction
+  contents.push({
+    role: 'system',
+    parts: [{ text: customPrompt || defaultPrompt }]
+  });
+
+  // Add message history if provided
+  if (Array.isArray(messages)) {
+    const validMessages = messages.filter(
+      m => m.role && m.content && ['user', 'assistant'].includes(m.role)
+    );
+
+    contents.push(
+      ...validMessages.map(m => ({
+        role: m.role,
+        parts: [{ text: m.content }]
+      }))
+    );
+  } else if (message) {
     contents.push({
       role: 'user',
-      parts: [{ text: customPrompt || defaultPrompt }]
+      parts: [{ text: message }]
     });
-
-    // Add message history if present
-    if (Array.isArray(messages)) {
-      const validMessages = messages.filter(m =>
-        m.role && m.content && ['user', 'bot'].includes(m.role)
-      );
-
-      contents.push(...validMessages.map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.content }]
-      })));
-    } else if (message) {
-      contents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
-    }
   }
 
   const generationConfig = {
-    temperature: 1.2,
-    topK: 50,
-    topP: 0.95,
+    temperature: Math.min(1.0, Math.max(0.0, req.body.temperature || 0.8)),
+    topK: Math.min(80, Math.max(1, req.body.topK || 50)),
+    topP: Math.min(1.0, Math.max(0.0, req.body.topP || 0.95)),
     candidateCount: 1
   };
+
+  let lastError = null;
 
   for (const key of GEMINI_KEYS) {
     try {
@@ -86,28 +87,37 @@ Make each reply feel fresh and personalized.
 
       const data = await response.json();
 
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!response.ok) {
+        console.error(
+          `⚠️ Gemini API Error (Key: ${key.slice(-5)}): ${data.error?.message}`
+        );
+        lastError = data.error?.message || 'API request failed';
+        continue;
+      }
 
-      if (response.ok && text) {
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (reply) {
         return res.json({
           success: true,
-          reply: text.trim(),
+          reply: reply.trim(),
           data
         });
       } else {
-        console.warn(`⚠️ Key ${key.slice(-5)} failed: ${data?.error?.message || 'Unknown error'}`);
+        lastError = 'No response from Gemini API';
       }
     } catch (err) {
-      console.warn(`⚠️ Error with key ${key.slice(-5)}: ${err.message}`);
+      console.error(`⚠️ Network error: ${err.message}`);
+      lastError = err.message;
     }
   }
 
   res.status(500).json({
     success: false,
-    error: 'All Gemini API keys failed. Please try again later.'
+    error: lastError || 'All API keys failed. Try again later.'
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Gemini Chat API is running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
