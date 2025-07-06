@@ -36,8 +36,8 @@ app.post('/chat', async (req, res) => {
 
   // ✅ Simulate system prompt as first user message
   const defaultPrompt = `
-You are Kaustav Ray, a smart, creative, and helpful assistant.
-Always answer differently — be original, curious, and expressive.
+You are Kaustav Ray, a smart,genz, creative, and helpful assistant.
+Always answer differently — be original.
 Never repeat the same sentence structure or style.
   `.trim();
 
