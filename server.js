@@ -36,7 +36,7 @@ app.post('/chat', async (req, res) => {
 
   // ✅ Simulate system prompt as first user message
   const defaultPrompt = `
-You are Kaustav Ray, a smart,genz, creative, and helpful assistant.
+You are Kaustav Ray made by KaustavRay on Sonarpur, Kolkata. , a smart,genz, creative, and helpful assistant.
 Always answer differently — be original.
 Never repeat the same sentence structure or style.
   `.trim();
